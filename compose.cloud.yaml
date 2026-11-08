@@ -1,0 +1,13 @@
+# Optional build-only trust bundle for a managed cloud HTTPS proxy.
+# No certificate or credential is retained in the image layers.
+x-cloud-build: &cloud-build
+  context: .
+  secrets: [proxy_ca]
+services:
+  api:
+    build: *cloud-build
+  worker:
+    build: *cloud-build
+secrets:
+  proxy_ca:
+    file: ${PROXY_CA_FILE:-/etc/ssl/certs/ca-certificates.crt}

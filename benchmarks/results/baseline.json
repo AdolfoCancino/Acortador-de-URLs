@@ -1,0 +1,56 @@
+{
+  "date": "2026-11-07",
+  "tool": "grafana/k6:1.0.0",
+  "target_url": "https://8.8.8.8/",
+  "redirects_followed": false,
+  "load_model": "10 concurrent VUs, closed loop, no sleep, 30 seconds per variant",
+  "environment": {
+    "visible_cpus": 5,
+    "visible_memory_gib": 33,
+    "docker": "rootless",
+    "docker_storage_driver": "vfs",
+    "topology": "API, PostgreSQL, Redis, worker and k6 on same host, Compose network, HTTP without TLS",
+    "concurrent_tests_or_builds": false
+  },
+  "settings": {
+    "worker_batch_size": 100,
+    "worker_flush_seconds": 1,
+    "rate_limit_capacity": 100000,
+    "rate_limit_refill_per_second": 100000
+  },
+  "post_run_validation": {
+    "consumer_group_pending": 0,
+    "consumer_group_lag": 0
+  },
+  "runs": [
+    {
+      "mode": "warm",
+      "cache_ttl_seconds": 300,
+      "vus": 10,
+      "duration": "30s",
+      "measured_redirects": 67900,
+      "error_rate": 0,
+      "latency_ms": {
+        "p50": 4.105342,
+        "p95": 6.331322349999999,
+        "p99": 8.054253129999998
+      },
+      "persisted_clicks_including_prime": 67901
+    },
+    {
+      "mode": "disabled",
+      "cache_ttl_seconds": 0,
+      "vus": 10,
+      "duration": "30s",
+      "measured_redirects": 22193,
+      "error_rate": 0,
+      "latency_ms": {
+        "p50": 12.410291,
+        "p95": 20.152874199999985,
+        "p99": 27.040077959999987
+      },
+      "persisted_clicks_including_prime": 22194
+    }
+  ],
+  "limitations": "One local run per variant; shared cloud resources. Does not establish production throughput, long-term queue stability or WAN latency."
+}

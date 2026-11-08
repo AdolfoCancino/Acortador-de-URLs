@@ -1,0 +1,92 @@
+name: acortador
+x-app: &app
+  image: acortador:local
+  build: .
+  init: true
+  restart: unless-stopped
+  environment: &app-env
+    DATABASE_URL: postgresql+asyncpg://shortener:${POSTGRES_PASSWORD:-shortener}@postgres:5432/shortener
+    REDIS_URL: redis://redis:6379/0
+    API_KEYS: '${API_KEYS:-{"dev-api-key":"demo"}}'
+    CODE_SECRET: ${CODE_SECRET:-development-code-secret-change-before-production}
+    IP_HASH_SECRET: ${IP_HASH_SECRET:-development-ip-secret-change-before-production}
+    BASE_URL: ${BASE_URL:-http://localhost:8000}
+    CACHE_TTL_SECONDS: ${CACHE_TTL_SECONDS:-300}
+    NEGATIVE_CACHE_TTL_SECONDS: ${NEGATIVE_CACHE_TTL_SECONDS:-10}
+    RATE_LIMIT_CAPACITY: ${RATE_LIMIT_CAPACITY:-100}
+    RATE_LIMIT_REFILL_PER_SECOND: ${RATE_LIMIT_REFILL_PER_SECOND:-10}
+    BLOCKED_DOMAINS: ${BLOCKED_DOMAINS:-[]}
+    GEOIP_DATABASE_PATH: ${GEOIP_DATABASE_PATH:-}
+    WORKER_BATCH_SIZE: ${WORKER_BATCH_SIZE:-100}
+    WORKER_FLUSH_SECONDS: ${WORKER_FLUSH_SECONDS:-1}
+  volumes:
+    - ./geoip:/geoip:ro
+  depends_on:
+    postgres:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+services:
+  api:
+    <<: *app
+    ports:
+      - "127.0.0.1:${PORT:-8000}:8000"
+    healthcheck:
+      test: ["CMD", ".venv/bin/python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/readyz', timeout=3)"]
+      interval: 5s
+      timeout: 4s
+      retries: 12
+      start_period: 10s
+  worker:
+    <<: *app
+    command: [".venv/bin/python", "-m", "app.worker"]
+    stop_grace_period: 30s
+    healthcheck:
+      test: ["CMD", ".venv/bin/python", "-m", "app.worker", "--healthcheck"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: shortener
+      POSTGRES_USER: shortener
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-shortener}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U shortener -d shortener"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec", "--maxmemory-policy", "noeviction"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+  k6:
+    image: grafana/k6:1.0.0
+    profiles: [tools]
+    user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
+    environment:
+      BASE_URL: http://api:8000
+      API_KEY: ${BENCHMARK_API_KEY:-dev-api-key}
+      NO_PROXY: api,localhost,127.0.0.1
+      no_proxy: api,localhost,127.0.0.1
+    volumes:
+      - ./benchmarks:/scripts:ro
+      - ./benchmark-results:/results
+    depends_on:
+      api:
+        condition: service_healthy
+volumes:
+  postgres-data:
+  redis-data:
